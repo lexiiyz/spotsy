@@ -45,8 +45,8 @@ async def process_chat_query(prompt: str, lat: float, lng: float, session_id: Op
 
     quiet_count = sum(1 for r in recommendations if r.busyness.current_popularity < 40)
 
-    # Step 4: AI Text Generation (Groq / OpenAI / Smart Synthesis)
-    summary_text = await _generate_llm_summary(prompt, recommendations, quiet_count)
+    # Step 4: AI Text Generation via Groq (Llama 3.3 70B) or Fallback
+    summary_text = await _generate_groq_summary(prompt, recommendations, quiet_count)
 
     return ChatResponse(
         text=summary_text,
@@ -55,18 +55,20 @@ async def process_chat_query(prompt: str, lat: float, lng: float, session_id: Op
         session_id=session_id
     )
 
-async def _generate_llm_summary(prompt: str, recommendations: List[PlaceRecommendationResult], quiet_count: int) -> str:
-    """Generate friendly summary text using LLM API if available, or fallback synthesis."""
-    # Attempt Groq LLM if key is present
+async def _generate_groq_summary(prompt: str, recommendations: List[PlaceRecommendationResult], quiet_count: int) -> str:
+    """Generate friendly summary text using Groq Llama 3.3 70B API, or fallback synthesis."""
     if settings.GROQ_API_KEY:
         try:
             from groq import AsyncGroq
             client = AsyncGroq(api_key=settings.GROQ_API_KEY)
             places_summary = "\n".join([
-                f"- {r.place.name} ({r.place.category}, {r.place.area}): Popularity {r.busyness.current_popularity}%, Traffic {r.traffic.duration_in_traffic_mins} min ({r.traffic.distance_km} km)"
+                f"- {r.place.name} ({r.place.category}, {r.place.area}): Tingkat keramaian {r.busyness.current_popularity}%, Estimasi perjalanan {r.traffic.duration_in_traffic_mins} menit ({r.traffic.distance_km} km)"
                 for r in recommendations[:3]
             ])
-            system_prompt = "Kamu adalah Spotsy, asisten tempat lokal yang ramah. Berikan 1-2 kalimat rangkuman singkat dalam bahasa Indonesia tanpa karakter markdown bintang (**) mentah."
+            system_prompt = (
+                "Kamu adalah Spotsy, teman dan asisten tempat lokal yang ramah. "
+                "Berikan 1-2 kalimat rangkuman singkat dalam Bahasa Indonesia yang hangat tanpa menggunakan karakter bintang mentah (**)."
+            )
             user_prompt = f"Pengguna mencari: '{prompt}'. Ditemukan {len(recommendations)} tempat ({quiet_count} sepi):\n{places_summary}"
             
             res = await client.chat.completions.create(
@@ -79,33 +81,10 @@ async def _generate_llm_summary(prompt: str, recommendations: List[PlaceRecommen
                 temperature=0.7
             )
             if res.choices and res.choices[0].message.content:
-                return res.choices[0].message.content.strip()
+                clean_text = res.choices[0].message.content.strip().replace("**", "")
+                return clean_text
         except Exception as e:
             print(f"Warning: Groq LLM API call failed ({e}), using fallback synthesis.")
-
-    # Attempt OpenAI LLM if key is present
-    if settings.OPENAI_API_KEY:
-        try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-            places_summary = "\n".join([
-                f"- {r.place.name} ({r.place.category}, {r.place.area}): Popularity {r.busyness.current_popularity}%, Traffic {r.traffic.duration_in_traffic_mins} min"
-                for r in recommendations[:3]
-            ])
-            system_prompt = "Kamu adalah Spotsy, asisten tempat lokal yang ramah. Berikan 1-2 kalimat rangkuman singkat dalam bahasa Indonesia tanpa karakter bintang mentah."
-            
-            res = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Pengguna mencari: '{prompt}'. Rekomendasi:\n{places_summary}"}
-                ],
-                max_tokens=120
-            )
-            if res.choices and res.choices[0].message.content:
-                return res.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"Warning: OpenAI LLM API call failed ({e}), using fallback synthesis.")
 
     # Fallback smart synthesis
     if quiet_count > 0:
