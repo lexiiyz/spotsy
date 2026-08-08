@@ -4,11 +4,11 @@ services:
     container_name: spotsy_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: spotsy_db
-      POSTGRES_USER: spotsy_user
-      POSTGRES_PASSWORD: spotsy_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -18,10 +18,10 @@ services:
     container_name: spotsy_pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@spotsy.com
-      PGADMIN_DEFAULT_PASSWORD: adminpassword
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
-      - "5050:80"
+      - "${PGADMIN_PORT}:80"
     depends_on:
       - db
 
@@ -30,10 +30,10 @@ services:
       context: ./spotsy-backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT}:8000"
     environment:
-      - PORT=8000
-      - DATABASE_URL=postgresql://spotsy_user:spotsy_password@db:5432/spotsy_db
+      - PORT=${BACKEND_PORT}
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - db
     restart: unless-stopped
@@ -43,9 +43,9 @@ services:
       context: ./spotsy-frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT}:3000"
     environment:
-      - NEXT_PUBLIC_BACKEND_URL=http://spotsy-backend:8000
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
     depends_on:
       - spotsy-backend
     restart: unless-stopped
