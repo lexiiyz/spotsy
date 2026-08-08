@@ -28,10 +28,26 @@ export const LandingPage: React.FC = () => {
   const [selectedPrompt, setSelectedPrompt] = useState<string>("");
   const [userLocation, setUserLocation] = useState<UserCoordinates>(DEFAULT_SURABAYA_COORDS);
   const [locating, setLocating] = useState<boolean>(false);
+  const [placesList, setPlacesList] = useState<PlaceItem[]>(MOCK_PLACES);
 
   useEffect(() => {
     fetchLocation();
+    fetchBackendPlaces();
   }, []);
+
+  const fetchBackendPlaces = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/places/search?query=");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          setPlacesList(data);
+        }
+      }
+    } catch (e) {
+      console.warn("Backend API not reachable, using local dataset fallback:", e);
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -73,7 +89,7 @@ export const LandingPage: React.FC = () => {
 
   const isEspresso = theme === "espresso";
 
-  const filteredPlaces = MOCK_PLACES.filter((place) => {
+  const filteredPlaces = placesList.filter((place) => {
     const matchesCategory =
       activeCategory === "Semua" ||
       (activeCategory === "Kafe" && place.category.toLowerCase() === "kafe") ||
@@ -248,7 +264,7 @@ export const LandingPage: React.FC = () => {
 
               {/* Sample Live Feed Cards */}
               <div className="space-y-3.5">
-                {MOCK_PLACES.slice(0, 2).map((place, idx) => {
+                {placesList.slice(0, 2).map((place, idx) => {
                   const traffic = mockGetTrafficRoute(
                     userLocation.latitude,
                     userLocation.longitude,
