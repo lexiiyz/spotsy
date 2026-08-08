@@ -26,6 +26,7 @@
 | **Styling & UI** | Tailwind CSS v4, Lucide Icons, Plus Jakarta Sans Font |
 | **Backend** | Python 3.12, FastAPI, `uv` Package Manager |
 | **Database** | PostgreSQL 16 (Dockerized / Supabase compatible) |
+| **DB Management** | pgAdmin 4 (`http://localhost:5050`) |
 | **Orchestration** | Docker & Docker Compose |
 
 ---
@@ -36,7 +37,8 @@
 Spotsy/
 ├── spotsy-frontend/       # Next.js 16 App Router (Frontend UI & Chat Dialog)
 ├── spotsy-backend/        # FastAPI Microservice (Busyness, Traffic, Places API)
-├── docker-compose.yml     # Multi-container orchestration (FE + BE + PostgreSQL)
+├── init.sql               # PostgreSQL DDL & Seed Data
+├── docker-compose.yml     # Multi-container orchestration (FE + BE + DB + pgAdmin)
 ├── Product Requirements Document (PRD) & Architecture Schema.md
 └── README.md
 ```
@@ -56,6 +58,10 @@ docker compose up --build
 Akses aplikasi di browser:
 - **Frontend App**: `http://localhost:3000`
 - **Backend API & Swagger Docs**: `http://localhost:8000/docs`
+- **pgAdmin 4 Dashboard**: `http://localhost:5050`
+  - *Email*: `admin@spotsy.com`
+  - *Password*: `adminpassword`
+  - *Host Connection*: `db` (Port `5432`, Username `spotsy_user`, Password `spotsy_password`, Database `spotsy_db`)
 
 ---
 
