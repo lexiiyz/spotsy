@@ -1,0 +1,26 @@
+# Dependencies & Environments
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+.uv/
+
+# Next.js build & output
+spotsy-frontend/.next/
+spotsy-frontend/out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE & System
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker build logs
+*.log
