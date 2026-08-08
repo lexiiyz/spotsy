@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { MOCK_PLACES, PlaceItem, mockGetTrafficRoute } from "../lib/mockData";
+import { PlaceItem, mockGetTrafficRoute } from "../lib/mockData";
 import { PlaceCard } from "./PlaceCard";
 import { ChatInterface } from "./ChatInterface";
 import { Navbar } from "./Navbar";
@@ -17,6 +17,7 @@ import {
   Activity,
   ChevronRight,
   ArrowUpRight,
+  Loader2,
 } from "lucide-react";
 
 export const LandingPage: React.FC = () => {
@@ -28,24 +29,32 @@ export const LandingPage: React.FC = () => {
   const [selectedPrompt, setSelectedPrompt] = useState<string>("");
   const [userLocation, setUserLocation] = useState<UserCoordinates>(DEFAULT_SURABAYA_COORDS);
   const [locating, setLocating] = useState<boolean>(false);
-  const [placesList, setPlacesList] = useState<PlaceItem[]>(MOCK_PLACES);
+  const [placesList, setPlacesList] = useState<PlaceItem[]>([]);
+  const [loadingPlaces, setLoadingPlaces] = useState<boolean>(true);
 
   useEffect(() => {
-    fetchLocation();
-    fetchBackendPlaces();
+    initApp();
   }, []);
 
-  const fetchBackendPlaces = async () => {
+  const initApp = async () => {
+    setLocating(true);
+    setLoadingPlaces(true);
+    const coords = await getCurrentUserLocation();
+    setUserLocation(coords);
+    setLocating(false);
+
     try {
-      const res = await fetch("http://localhost:8000/api/v1/places/search?query=");
+      const res = await fetch(
+        `http://localhost:8000/api/v1/places/search?query=&lat=${coords.latitude}&lng=${coords.longitude}`
+      );
       if (res.ok) {
         const data = await res.json();
-        if (data && data.length > 0) {
-          setPlacesList(data);
-        }
+        setPlacesList(data || []);
       }
     } catch (e) {
-      console.warn("Backend API not reachable, using local dataset fallback:", e);
+      console.warn("Backend API not reachable:", e);
+    } finally {
+      setLoadingPlaces(false);
     }
   };
 
@@ -58,13 +67,6 @@ export const LandingPage: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isChatOpen]);
-
-  const fetchLocation = async () => {
-    setLocating(true);
-    const coords = await getCurrentUserLocation();
-    setUserLocation(coords);
-    setLocating(false);
-  };
 
   const handleOpenChatWithPrompt = (prompt?: string) => {
     setSelectedPrompt(prompt || "");
@@ -123,7 +125,7 @@ export const LandingPage: React.FC = () => {
         onToggleTheme={toggleTheme}
         userLocation={userLocation}
         locating={locating}
-        onRefreshLocation={fetchLocation}
+        onRefreshLocation={initApp}
         onOpenChat={handleOpenChatWithPrompt}
       />
 
@@ -258,70 +260,81 @@ export const LandingPage: React.FC = () => {
                       : "text-[#5c3317] bg-[#f8e5d3] border-[#e8c8b0]"
                   }`}
                 >
-                  Surabaya Timur
+                  Real-time GPS
                 </span>
               </div>
 
-              {/* Sample Live Feed Cards */}
-              <div className="space-y-3.5">
-                {placesList.slice(0, 2).map((place, idx) => {
-                  const traffic = mockGetTrafficRoute(
-                    userLocation.latitude,
-                    userLocation.longitude,
-                    place.latitude,
-                    place.longitude
-                  );
-                  const popularity = [25, 45][idx];
-                  const isQuiet = popularity < 40;
+              {/* Live Monitor Places */}
+              {loadingPlaces ? (
+                <div className="py-8 flex flex-col items-center justify-center gap-2 text-xs font-bold opacity-70">
+                  <Loader2 className="w-5 h-5 animate-spin text-[#d99b66]" />
+                  <span>Mencari tempat nyata dari OpenStreetMap...</span>
+                </div>
+              ) : placesList.length === 0 ? (
+                <p className="text-xs text-center py-6 opacity-60 font-bold">
+                  Belum ada tempat ditemukan di lokasi ini.
+                </p>
+              ) : (
+                <div className="space-y-3.5">
+                  {placesList.slice(0, 2).map((place, idx) => {
+                    const traffic = mockGetTrafficRoute(
+                      userLocation.latitude,
+                      userLocation.longitude,
+                      place.latitude,
+                      place.longitude
+                    );
+                    const popularity = [25, 45][idx % 2];
+                    const isQuiet = popularity < 40;
 
-                  return (
-                    <div
-                      key={place.place_id}
-                      className={`p-4 rounded-2xl border transition-all marshmallow-squish ${
-                        isEspresso
-                          ? "bg-[#1c0f0a]/90 border-[#3d2317] hover:border-[#5c3317]"
-                          : "bg-[#f5ebd9]/50 border-[#e8d0bd] hover:border-[#d99b66]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <span className="text-xs font-extrabold text-[#d99b66]">{place.category}</span>
-                          <h4
-                            className={`text-xs font-black ${
-                              isEspresso ? "text-[#fdf8f0]" : "text-[#3b2016]"
-                            }`}
-                          >
-                            {place.name}
-                          </h4>
-                        </div>
-                        <span
-                          className={`text-xs font-bold px-3 py-1 rounded-full border ${
-                            isQuiet
-                              ? isEspresso
-                                ? "bg-[#e8f5e9]/15 text-[#a5d6a7] border-[#81c784]/30"
-                                : "bg-[#e8f5e9] text-[#2e7d32] border-[#c8e6c9]"
-                              : isEspresso
-                              ? "bg-[#fff3e0]/15 text-[#ffcc80] border-[#ffb74d]/30"
-                              : "bg-[#fff3e0] text-[#e65100] border-[#ffe0b2]"
-                          }`}
-                        >
-                          {isQuiet ? "Suasana Sepi (25%)" : "Sedang (45%)"}
-                        </span>
-                      </div>
+                    return (
                       <div
-                        className={`flex items-center justify-between text-xs pt-2 border-t font-bold ${
+                        key={place.place_id}
+                        className={`p-4 rounded-2xl border transition-all marshmallow-squish ${
                           isEspresso
-                            ? "text-[#a89083] border-[#3d2317]"
-                            : "text-[#8c7365] border-[#e8d8c8]"
+                            ? "bg-[#1c0f0a]/90 border-[#3d2317] hover:border-[#5c3317]"
+                            : "bg-[#f5ebd9]/50 border-[#e8d0bd] hover:border-[#d99b66]"
                         }`}
                       >
-                        <span>{place.area}</span>
-                        <span>{traffic.duration_in_traffic_mins} mnt perjalanan ({traffic.distance_km} km)</span>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div>
+                            <span className="text-xs font-extrabold text-[#d99b66]">{place.category}</span>
+                            <h4
+                              className={`text-xs font-black ${
+                                isEspresso ? "text-[#fdf8f0]" : "text-[#3b2016]"
+                              }`}
+                            >
+                              {place.name}
+                            </h4>
+                          </div>
+                          <span
+                            className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                              isQuiet
+                                ? isEspresso
+                                  ? "bg-[#e8f5e9]/15 text-[#a5d6a7] border-[#81c784]/30"
+                                  : "bg-[#e8f5e9] text-[#2e7d32] border-[#c8e6c9]"
+                                : isEspresso
+                                ? "bg-[#fff3e0]/15 text-[#ffcc80] border-[#ffb74d]/30"
+                                : "bg-[#fff3e0] text-[#e65100] border-[#ffe0b2]"
+                            }`}
+                          >
+                            {isQuiet ? "Suasana Sepi (25%)" : "Sedang (45%)"}
+                          </span>
+                        </div>
+                        <div
+                          className={`flex items-center justify-between text-xs pt-2 border-t font-bold ${
+                            isEspresso
+                              ? "text-[#a89083] border-[#3d2317]"
+                              : "text-[#8c7365] border-[#e8d8c8]"
+                          }`}
+                        >
+                          <span className="truncate max-w-[150px]">{place.area}</span>
+                          <span>{traffic.duration_in_traffic_mins} mnt ({traffic.distance_km} km)</span>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <button
                 onClick={() => handleOpenChatWithPrompt("Tampilkan semua tempat sepi dekat lokasi saya")}
@@ -355,7 +368,7 @@ export const LandingPage: React.FC = () => {
                 isEspresso ? "text-[#a89083]" : "text-[#8c7365]"
               }`}
             >
-              Data keramaian dan jarak tempuh diperbarui secara berkala
+              Data tempat nyata dari OpenStreetMap di sekitar lokasimu
             </p>
           </div>
 
@@ -390,45 +403,56 @@ export const LandingPage: React.FC = () => {
         </div>
 
         {/* Place Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPlaces.map((place, idx) => {
-            const mockTraffic = mockGetTrafficRoute(
-              userLocation.latitude,
-              userLocation.longitude,
-              place.latitude,
-              place.longitude
-            );
-            const mockBusyness = {
-              is_live_available: true,
-              current_popularity: [25, 45, 80, 30, 90][idx % 5],
-              busyness_status: ["Quiet", "Moderate", "Busy", "Quiet", "Very Busy"][idx % 5],
-            };
+        {loadingPlaces ? (
+          <div className="py-16 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-[#d99b66]" />
+            <p className="text-sm font-bold opacity-70">Mengambil data tempat nyata di sekitarmu...</p>
+          </div>
+        ) : filteredPlaces.length === 0 ? (
+          <div className="py-16 text-center">
+            <p className="text-sm font-bold opacity-70">Tidak ada tempat ditemukan untuk pencarian ini.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPlaces.map((place, idx) => {
+              const mockTraffic = mockGetTrafficRoute(
+                userLocation.latitude,
+                userLocation.longitude,
+                place.latitude,
+                place.longitude
+              );
+              const mockBusyness = {
+                is_live_available: true,
+                current_popularity: [25, 45, 80, 30, 90][idx % 5],
+                busyness_status: ["Quiet", "Moderate", "Busy", "Quiet", "Very Busy"][idx % 5],
+              };
 
-            return (
-              <div key={place.place_id} className="flex flex-col">
-                <PlaceCard
-                  place={place}
-                  busyness={mockBusyness}
-                  traffic={mockTraffic}
-                  theme={theme}
-                />
-                <button
-                  onClick={() =>
-                    handleOpenChatWithPrompt(`Bagaimana suasana dan rute perjalanan menuju ${place.name}?`)
-                  }
-                  className={`mt-2.5 w-full py-3 rounded-full font-bold text-xs border transition-all flex items-center justify-center gap-1.5 marshmallow-squish ${
-                    isEspresso
-                      ? "bg-[#28160d] hover:bg-[#3d2317] text-[#f5ebd9] hover:text-[#f8d7c4] border-[#3d2317]"
-                      : "bg-[#f5ebd9] hover:bg-[#ede0c9] text-[#3b2016] hover:text-[#8c4a27] border-[#e2d0b7] shadow-xs"
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4 text-[#d99b66]" />
-                  <span>Tanya Asisten tentang tempat ini</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
+              return (
+                <div key={place.place_id} className="flex flex-col">
+                  <PlaceCard
+                    place={place}
+                    busyness={mockBusyness}
+                    traffic={mockTraffic}
+                    theme={theme}
+                  />
+                  <button
+                    onClick={() =>
+                      handleOpenChatWithPrompt(`Bagaimana suasana dan rute perjalanan menuju ${place.name}?`)
+                    }
+                    className={`mt-2.5 w-full py-3 rounded-full font-bold text-xs border transition-all flex items-center justify-center gap-1.5 marshmallow-squish ${
+                      isEspresso
+                        ? "bg-[#28160d] hover:bg-[#3d2317] text-[#f5ebd9] hover:text-[#f8d7c4] border-[#3d2317]"
+                        : "bg-[#f5ebd9] hover:bg-[#ede0c9] text-[#3b2016] hover:text-[#8c4a27] border-[#e2d0b7] shadow-xs"
+                    }`}
+                  >
+                    <MessageSquare className="w-4 h-4 text-[#d99b66]" />
+                    <span>Tanya Asisten tentang tempat ini</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* Floating Action Button (FAB) */}

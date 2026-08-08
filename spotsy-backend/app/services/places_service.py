@@ -5,67 +5,19 @@ from sqlalchemy import text
 from app.db.postgres import AsyncSessionLocal
 from app.schemas.places import PlaceItem
 
-FALLBACK_PLACES: List[PlaceItem] = [
-    PlaceItem(
-        place_id="place-001",
-        name="Tropikal Coffee Manyar",
-        category="Kafe",
-        area="Manyar, Surabaya Timur",
-        address="Jl. Keputih Timur No. 12",
-        latitude=-7.2819,
-        longitude=112.7953,
-        rating=4.7,
-        price_level="$$",
-        wifi_available=True,
-        power_outlets=True,
-        noise_level="Quiet",
-        opening_hours="08:00 - 23:00",
-    ),
-    PlaceItem(
-        place_id="place-002",
-        name="Koridor Co-Working Space",
-        category="Coworking",
-        area="Siwalankerto, Surabaya",
-        address="Gedung Siola Lt. 3",
-        latitude=-7.255,
-        longitude=112.738,
-        rating=4.8,
-        price_level="$",
-        wifi_available=True,
-        power_outlets=True,
-        noise_level="Quiet",
-        opening_hours="08:00 - 21:00",
-    ),
-    PlaceItem(
-        place_id="place-003",
-        name="Warkop Pitulikur 24 Jam",
-        category="Warkop",
-        area="Gubeng, Surabaya",
-        address="Jl. Bagong Jinawi No. 27",
-        latitude=-7.271,
-        longitude=112.752,
-        rating=4.5,
-        price_level="$",
-        wifi_available=True,
-        power_outlets=True,
-        noise_level="Moderate",
-        opening_hours="24 Jam",
-    ),
-]
-
 async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912) -> List[PlaceItem]:
-    """Fetch REAL places from OpenStreetMap (Overpass API) around user location with DB cache & fallback."""
+    """Fetch REAL places from OpenStreetMap (Overpass API) around user location with DB cache."""
     try:
         # Step 1: Query OpenStreetMap Overpass API for real places within 5km radius
         real_places = await _fetch_overpass_places(query, lat, lng)
         if real_places:
-            # Cache real places into PostgreSQL
+            # Cache real places into PostgreSQL asynchronously
             asyncio.create_task(_cache_places_to_db(real_places))
             return real_places
     except Exception as e:
         print(f"Warning: Overpass API fetch failed ({e}), checking PostgreSQL DB cache...")
 
-    # Step 2: Fallback to PostgreSQL DB cache query
+    # Step 2: Query PostgreSQL DB cache
     try:
         async with AsyncSessionLocal() as session:
             sql = text("""
@@ -97,9 +49,9 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
                     for row in rows
                 ]
     except Exception as db_err:
-        print(f"Warning: PostgreSQL DB query failed ({db_err}), using static fallback dataset.")
+        print(f"Warning: PostgreSQL DB query failed ({db_err})")
 
-    return FALLBACK_PLACES
+    return []
 
 async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[PlaceItem]:
     """Query OpenStreetMap Overpass API for real cafes, coworking spaces, and restaurants."""
@@ -132,13 +84,11 @@ async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[Pla
             if not name:
                 continue
 
-            # If user entered a specific search query, filter matching names/tags
+            # Filter matching names/tags if user entered a specific search query
             if q_lower and q_lower not in name.lower() and q_lower not in str(tags).lower():
-                # Allow general query if not matched specifically
                 if len(places) > 5 and q_lower not in ["sepi", "kafe", "warkop", "coworking", "dekat", "surabaya"]:
                     continue
 
-            # Extract latitude & longitude
             plat = el.get("lat") or el.get("center", {}).get("lat")
             plng = el.get("lon") or el.get("center", {}).get("lon")
             if not plat or not plng:
