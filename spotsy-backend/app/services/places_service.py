@@ -5,10 +5,12 @@ from sqlalchemy import text
 from app.db.postgres import AsyncSessionLocal
 from app.schemas.places import PlaceItem
 
+GENERIC_QUERY_WORDS = {"cafe", "kafe", "warkop", "coworking", "kuliner", "makanan", "sepi", "ramai", "dekat", "surabaya", "tempat", "nugas"}
+
 async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912) -> List[PlaceItem]:
     """Fetch REAL places from OpenStreetMap (Overpass API) around user location with DB cache."""
     try:
-        # Step 1: Query OpenStreetMap Overpass API for real places within 5km radius
+        # Step 1: Query OpenStreetMap Overpass API for real places within 10km radius
         real_places = await _fetch_overpass_places(query, lat, lng)
         if real_places:
             # Cache real places into PostgreSQL asynchronously
@@ -24,7 +26,7 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
                 SELECT place_id, name, category, area, address, latitude, longitude, rating, price_level, wifi_available, power_outlets, noise_level, opening_hours
                 FROM place_cache
                 WHERE LOWER(name) LIKE LOWER(:q) OR LOWER(area) LIKE LOWER(:q) OR LOWER(category) LIKE LOWER(:q)
-                LIMIT 10
+                LIMIT 12
             """)
             result = await session.execute(sql, {"q": f"%{query}%"})
             rows = result.fetchall()
@@ -54,29 +56,37 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
     return []
 
 async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[PlaceItem]:
-    """Query OpenStreetMap Overpass API for real cafes, coworking spaces, and restaurants."""
+    """Query OpenStreetMap Overpass API for real cafes, coworking spaces, warkop, and restaurants."""
     overpass_url = "https://overpass-api.de/api/interpreter"
     
-    # Overpass QL query searching nodes & ways around 5km radius
+    # Expanded Overpass QL query searching nodes & ways around 10km radius
     overpass_query = f"""
-    [out:json][timeout:8];
+    [out:json][timeout:12];
     (
-      node["amenity"~"cafe|restaurant|fast_food|coworking_space"](around:5000,{lat},{lng});
-      way["amenity"~"cafe|restaurant|fast_food|coworking_space"](around:5000,{lat},{lng});
+      node["amenity"~"cafe|restaurant|fast_food|food_court"](around:10000,{lat},{lng});
+      way["amenity"~"cafe|restaurant|fast_food|food_court"](around:10000,{lat},{lng});
+      node["office"="coworking"](around:10000,{lat},{lng});
+      node["shop"="coffee"](around:10000,{lat},{lng});
     );
-    out center 15;
+    out center 30;
     """
 
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    headers = {
+        "User-Agent": "SpotsyApp/1.0 (https://spotsy.app; contact@spotsy.app)"
+    }
+
+    async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
         res = await client.post(overpass_url, data={"data": overpass_query})
         if res.status_code != 200:
+            print(f"Overpass API returned status {res.status_code}")
             return []
 
         data = res.json()
         elements = data.get("elements", [])
         places: List[PlaceItem] = []
 
-        q_lower = query.lower()
+        q_clean = query.strip().lower()
+        is_generic_search = not q_clean or any(word in q_clean for word in GENERIC_QUERY_WORDS)
 
         for idx, el in enumerate(elements):
             tags = el.get("tags", {})
@@ -84,10 +94,9 @@ async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[Pla
             if not name:
                 continue
 
-            # Filter matching names/tags if user entered a specific search query
-            if q_lower and q_lower not in name.lower() and q_lower not in str(tags).lower():
-                if len(places) > 5 and q_lower not in ["sepi", "kafe", "warkop", "coworking", "dekat", "surabaya"]:
-                    continue
+            # If user entered a specific non-generic query (e.g. "Starbucks"), check if name/tags match
+            if not is_generic_search and q_clean not in name.lower() and q_clean not in str(tags).lower():
+                continue
 
             plat = el.get("lat") or el.get("center", {}).get("lat")
             plng = el.get("lon") or el.get("center", {}).get("lon")
@@ -96,11 +105,11 @@ async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[Pla
 
             amenity = tags.get("amenity", "cafe")
             category = "Kafe"
-            if amenity == "coworking_space":
+            if amenity == "coworking_space" or tags.get("office") == "coworking":
                 category = "Coworking"
-            elif amenity in ["restaurant", "fast_food"]:
+            elif amenity in ["restaurant", "fast_food", "food_court"]:
                 category = "Kuliner"
-            elif "warkop" in name.lower():
+            elif "warkop" in name.lower() or "kopi" in name.lower():
                 category = "Warkop"
 
             city = tags.get("addr:city") or tags.get("addr:subdistrict") or "Surabaya"
@@ -127,7 +136,7 @@ async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[Pla
                     opening_hours=opening,
                 )
             )
-            if len(places) >= 8:
+            if len(places) >= 12:
                 break
 
         return places
