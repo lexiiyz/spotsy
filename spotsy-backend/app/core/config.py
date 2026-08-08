@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     
-    # Database URL default (uses port 5435 to avoid Windows PostgreSQL service conflict)
-    DATABASE_URL: str = "postgresql+asyncpg://spotsy_user:spotsy_password@localhost:5435/spotsy_db"
+    # DATABASE_URL is strictly loaded from .env (no hardcoded fallback URL)
+    DATABASE_URL: str
     
     # LLM & AI Keys (Optional)
     OPENAI_API_KEY: str = ""

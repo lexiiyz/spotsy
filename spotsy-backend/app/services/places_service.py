@@ -19,7 +19,7 @@ OVERPASS_MIRRORS = [
 _IN_MEMORY_CACHE: Dict[str, tuple[float, List[PlaceItem]]] = {}
 CACHE_TTL_SECONDS = 300  # 5 minutes TTL
 
-async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912) -> List[PlaceItem]:
+async def search_places(query: str, lat: float, lng: float) -> List[PlaceItem]:
     """Fetch REAL places dynamically around user GPS coordinates using OpenStreetMap API with DB caching."""
     cache_key = f"{query.strip().lower()}_{round(lat, 2)}_{round(lng, 2)}"
     
