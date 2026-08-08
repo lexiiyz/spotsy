@@ -48,6 +48,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [locating, setLocating] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const handledPromptRef = useRef<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,7 +77,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, []);
 
   useEffect(() => {
-    if (initialPrompt && initialPrompt.trim()) {
+    if (initialPrompt && initialPrompt.trim() && handledPromptRef.current !== initialPrompt) {
+      handledPromptRef.current = initialPrompt;
       handleSend(initialPrompt);
     }
   }, [initialPrompt]);
