@@ -1,6 +1,6 @@
 # 🚀 Rencana Pembaruan & Roadmap Fitur Masa Depan (Spotsy Phase 2 & 3)
 
-Karena seluruh fitur utama **Phase 1 MVP Architecture** pada PRD telah **100% selesai diimplementasikan**, dokumen ini menyusun daftar ide pembaruan dan rencana pengembangan fitur lanjutan (*Future Feature Roadmap*) untuk meningkatkan kemampuan Spotsy dari sekadar MVP menjadi platform pencari tempat berbasis AI terlengkap.
+Dokumen ini merangkum rencana pembaruan fitur Spotsy untuk tahap berikutnya, dengan fokus utama pada **Integrasi Google Places API (Google Maps Platform)** untuk data tempat dan foto yang 100% presisi.
 
 ---
 
@@ -9,22 +9,23 @@ Karena seluruh fitur utama **Phase 1 MVP Architecture** pada PRD telah **100% se
 ```text
 ┌─────────────────────────┐    ┌─────────────────────────┐    ┌─────────────────────────┐
 │     PHASE 1 (MVP)       │ ──►│   PHASE 2 (ENHANCED)    │ ──►│   PHASE 3 (ECOSYSTEM)   │
-│  Done (FastAPI, Groq,   │    │ Live Maps, Overpass,    │    │ Table Reservations,     │
-│   PostgreSQL, Marshmallow)│    │ Voice, Check-in Module  │    │ Work Pass Vouchers      │
+│  Done (FastAPI, Groq,   │    │ Google Places API,      │    │ Table Reservations,     │
+│   PostgreSQL, Marshmallow)│    │ Interactive Maps, Voice │    │ Work Pass Vouchers      │
 └─────────────────────────┘    └─────────────────────────┘    └─────────────────────────┘
 ```
 
 ---
 
-## 🌟 Phase 2: Enhanced Intelligence & Live Integrations
+## 🌟 Phase 2: Enhanced Intelligence & Live Google Places API Integrations
 
-### 1. Integrasi Peta Interaktif (Interactive Map View)
-- [ ] **Tombol Toggle Grid / Map View:** Pengguna dapat berpindah antara tampilan kartu empuk (*Marshmallow Grid*) dan **Tampilan Peta Interaktif (Mapbox / Leaflet / Google Maps)**.
+### 1. Integrasi Google Places API & Google Maps Platform (Prioritas Utama)
+- [ ] **Google Places API Nearby & Text Search:** Menggantikan OpenStreetMap dengan **Google Places API** untuk pencarian kafe, warkop, dan coworking space dengan data 100% akurat di seluruh Indonesia.
+- [ ] **Foto Suasana & Ulasan Pengunjung Real:** Menampilkan foto asli interior kafe, ulasan pengunjung (*Google Reviews*), serta jam buka presisi dari Google Places API.
+- [ ] **Google Places Popular Times Integration:** Menampilkan kurva keramaian historis berdasarkan data populer Google Places.
+
+### 2. Integrasi Peta Interaktif (Interactive Map View)
+- [ ] **Tombol Toggle Grid / Map View:** Pengguna dapat berpindah antara tampilan kartu empuk (*Marshmallow Grid*) dan **Tampilan Peta Interaktif (Google Maps / Leaflet / Mapbox)**.
 - [ ] **Pin Warna Keramaian:** Pin lokasi di peta berwarna dinamis (*🟢 Sepi, 🟡 Sedang, 🔴 Ramai*) yang dapat diklik untuk melihat *preview popup* cepat.
-
-### 2. Integrasi Google Places API & Overpass OpenStreetMap (Live Data)
-- [ ] **Dynamic Live Places Search:** Pencarian tempat otomatis di kota mana saja berdasarkan koordinat lokasi terkini pengguna, bukan terbatas pada database lokal Surabaya.
-- [ ] **Galeri Foto & Ulasan Tempat:** Menampilkan foto suasana kafe, ulasan pengunjung, serta menu makanan/minuman secara langsung dari Google Places API.
 
 ### 3. Modul Crowdsourced Check-In & Update Suasana Komunitas
 - [ ] **Live Check-in Pengguna:** Pengguna di lokasi dapat memperbarui tingkat keramaian secara langsung (*"Di sini tinggal 2 meja kosong"*).
@@ -54,11 +55,9 @@ Karena seluruh fitur utama **Phase 1 MVP Architecture** pada PRD telah **100% se
 
 ---
 
-## 🛠️ Prioritas Pengembangan Selanjutnya (Next Recommended Sprint)
+## 🛠️ Urutan Prioritas Fitur Selanjutnya (Next Recommended Sprint)
 
-Jika kamu ingin melanjutkan ke tahap berikutnya, urutan rekomendasi fitur tercepat & paling berdampak:
-
-1. 📌 **Tombol "Navigasi di Google Maps" / Waze** pada tiap PlaceCard (Paling cepat & bermanfaat).
-2. 🗺️ **Tampilan Peta Interaktif (Leaflet.js / Mapbox)** di halaman utama.
-3. 🔖 **Fitur Simpan Favorit (Bookmarks)** menggunakan LocalStorage / PostgreSQL DB.
-4. 🎙️ **Voice Search (Speech-to-Text Browser API)**.
+1. 📍 **Integrasi Google Places API Key (`GOOGLE_PLACES_API_KEY`)** di backend untuk tempat & foto presisi.
+2. 📌 **Tombol "Buka Navigasi di Google Maps" / Waze** pada tiap PlaceCard.
+3. 🗺️ **Tampilan Peta Interaktif (Google Maps JS API / Leaflet)**.
+4. 🔖 **Simpan Tempat Favorit (Bookmarks)**.
