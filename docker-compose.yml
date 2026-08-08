@@ -1,6 +1,18 @@
-version: '3.8'
-
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: spotsy_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: spotsy_db
+      POSTGRES_USER: spotsy_user
+      POSTGRES_PASSWORD: spotsy_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
   spotsy-backend:
     build:
       context: ./spotsy-backend
@@ -9,6 +21,9 @@ services:
       - "8000:8000"
     environment:
       - PORT=8000
+      - DATABASE_URL=postgresql://spotsy_user:spotsy_password@db:5432/spotsy_db
+    depends_on:
+      - db
     restart: unless-stopped
 
   spotsy-frontend:
@@ -22,3 +37,6 @@ services:
     depends_on:
       - spotsy-backend
     restart: unless-stopped
+
+volumes:
+  postgres_data:
