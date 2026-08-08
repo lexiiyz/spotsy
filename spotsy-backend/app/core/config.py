@@ -7,15 +7,12 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     
-    # Database
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://spotsy_user:spotsy_password@localhost:5432/spotsy_db"
-    )
+    # Database URL default (uses port 5435 to avoid Windows PostgreSQL service conflict)
+    DATABASE_URL: str = "postgresql+asyncpg://spotsy_user:spotsy_password@localhost:5435/spotsy_db"
     
     # LLM & AI Keys (Optional)
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     
     # CORS
     CORS_ORIGINS: List[str] = [

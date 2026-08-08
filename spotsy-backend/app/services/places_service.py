@@ -1,25 +1,35 @@
 import httpx
 import asyncio
-from typing import List, Optional
+import time
+from typing import List, Optional, Dict
 from sqlalchemy import text
 from app.db.postgres import AsyncSessionLocal
 from app.schemas.places import PlaceItem
 
 GENERIC_QUERY_WORDS = {"cafe", "kafe", "warkop", "coworking", "kuliner", "makanan", "sepi", "ramai", "dekat", "surabaya", "tempat", "nugas"}
 
-async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912) -> List[PlaceItem]:
-    """Fetch REAL places from OpenStreetMap (Overpass API) around user location with DB cache."""
-    try:
-        # Step 1: Query OpenStreetMap Overpass API for real places within 10km radius
-        real_places = await _fetch_overpass_places(query, lat, lng)
-        if real_places:
-            # Cache real places into PostgreSQL asynchronously
-            asyncio.create_task(_cache_places_to_db(real_places))
-            return real_places
-    except Exception as e:
-        print(f"Warning: Overpass API fetch failed ({e}), checking PostgreSQL DB cache...")
+# Overpass API Public Mirror URLs for rate limit resilience
+OVERPASS_MIRRORS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
 
-    # Step 2: Query PostgreSQL DB cache
+# Simple in-memory cache to prevent spamming Overpass API
+_IN_MEMORY_CACHE: Dict[str, tuple[float, List[PlaceItem]]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes TTL
+
+async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912) -> List[PlaceItem]:
+    """Fetch REAL places around user location prioritizing PostgreSQL DB cache and Overpass API mirrors."""
+    cache_key = f"{query.strip().lower()}_{round(lat, 2)}_{round(lng, 2)}"
+    
+    # Step 1: Check in-memory cache
+    if cache_key in _IN_MEMORY_CACHE:
+        cached_time, cached_items = _IN_MEMORY_CACHE[cache_key]
+        if time.time() - cached_time < CACHE_TTL_SECONDS:
+            return cached_items
+
+    # Step 2: Query PostgreSQL DB cache first
     try:
         async with AsyncSessionLocal() as session:
             sql = text("""
@@ -31,8 +41,8 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
             result = await session.execute(sql, {"q": f"%{query}%"})
             rows = result.fetchall()
 
-            if rows:
-                return [
+            if rows and len(rows) >= 3:
+                places = [
                     PlaceItem(
                         place_id=row.place_id,
                         name=row.name,
@@ -50,96 +60,112 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
                     )
                     for row in rows
                 ]
+                _IN_MEMORY_CACHE[cache_key] = (time.time(), places)
+                return places
     except Exception as db_err:
         print(f"Warning: PostgreSQL DB query failed ({db_err})")
 
+    # Step 3: Fetch fresh real places from Overpass API mirrors if DB is empty
+    try:
+        real_places = await _fetch_overpass_places_with_mirror_fallback(query, lat, lng)
+        if real_places:
+            asyncio.create_task(_cache_places_to_db(real_places))
+            _IN_MEMORY_CACHE[cache_key] = (time.time(), real_places)
+            return real_places
+    except Exception as e:
+        print(f"Warning: Overpass API fetch failed ({e})")
+
     return []
 
-async def _fetch_overpass_places(query: str, lat: float, lng: float) -> List[PlaceItem]:
-    """Query OpenStreetMap Overpass API for real cafes, coworking spaces, warkop, and restaurants."""
-    overpass_url = "https://overpass-api.de/api/interpreter"
-    
-    # Expanded Overpass QL query searching nodes & ways around 10km radius
+async def _fetch_overpass_places_with_mirror_fallback(query: str, lat: float, lng: float) -> List[PlaceItem]:
+    """Query Overpass API for real places with automatic mirror failover."""
     overpass_query = f"""
-    [out:json][timeout:12];
+    [out:json][timeout:10];
     (
-      node["amenity"~"cafe|restaurant|fast_food|food_court"](around:10000,{lat},{lng});
-      way["amenity"~"cafe|restaurant|fast_food|food_court"](around:10000,{lat},{lng});
-      node["office"="coworking"](around:10000,{lat},{lng});
-      node["shop"="coffee"](around:10000,{lat},{lng});
+      node["amenity"~"cafe|restaurant|fast_food|food_court"](around:8000,{lat},{lng});
+      way["amenity"~"cafe|restaurant|fast_food|food_court"](around:8000,{lat},{lng});
+      node["office"="coworking"](around:8000,{lat},{lng});
+      node["shop"="coffee"](around:8000,{lat},{lng});
     );
-    out center 30;
+    out center 25;
     """
 
     headers = {
         "User-Agent": "SpotsyApp/1.0 (https://spotsy.app; contact@spotsy.app)"
     }
 
-    async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
-        res = await client.post(overpass_url, data={"data": overpass_query})
-        if res.status_code != 200:
-            print(f"Overpass API returned status {res.status_code}")
-            return []
+    q_clean = query.strip().lower()
+    is_generic_search = not q_clean or any(word in q_clean for word in GENERIC_QUERY_WORDS)
 
-        data = res.json()
-        elements = data.get("elements", [])
-        places: List[PlaceItem] = []
+    for mirror_url in OVERPASS_MIRRORS:
+        try:
+            async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
+                res = await client.post(mirror_url, data={"data": overpass_query})
+                if res.status_code == 200:
+                    data = res.json()
+                    elements = data.get("elements", [])
+                    places: List[PlaceItem] = []
 
-        q_clean = query.strip().lower()
-        is_generic_search = not q_clean or any(word in q_clean for word in GENERIC_QUERY_WORDS)
+                    for idx, el in enumerate(elements):
+                        tags = el.get("tags", {})
+                        name = tags.get("name")
+                        if not name:
+                            continue
 
-        for idx, el in enumerate(elements):
-            tags = el.get("tags", {})
-            name = tags.get("name")
-            if not name:
-                continue
+                        if not is_generic_search and q_clean not in name.lower() and q_clean not in str(tags).lower():
+                            continue
 
-            # If user entered a specific non-generic query (e.g. "Starbucks"), check if name/tags match
-            if not is_generic_search and q_clean not in name.lower() and q_clean not in str(tags).lower():
-                continue
+                        plat = el.get("lat") or el.get("center", {}).get("lat")
+                        plng = el.get("lon") or el.get("center", {}).get("lon")
+                        if not plat or not plng:
+                            continue
 
-            plat = el.get("lat") or el.get("center", {}).get("lat")
-            plng = el.get("lon") or el.get("center", {}).get("lon")
-            if not plat or not plng:
-                continue
+                        amenity = tags.get("amenity", "cafe")
+                        category = "Kafe"
+                        if amenity == "coworking_space" or tags.get("office") == "coworking":
+                            category = "Coworking"
+                        elif amenity in ["restaurant", "fast_food", "food_court"]:
+                            category = "Kuliner"
+                        elif "warkop" in name.lower() or "kopi" in name.lower():
+                            category = "Warkop"
 
-            amenity = tags.get("amenity", "cafe")
-            category = "Kafe"
-            if amenity == "coworking_space" or tags.get("office") == "coworking":
-                category = "Coworking"
-            elif amenity in ["restaurant", "fast_food", "food_court"]:
-                category = "Kuliner"
-            elif "warkop" in name.lower() or "kopi" in name.lower():
-                category = "Warkop"
+                        city = tags.get("addr:city") or tags.get("addr:subdistrict") or "Surabaya"
+                        street = tags.get("addr:street") or tags.get("addr:full") or "Surabaya"
 
-            city = tags.get("addr:city") or tags.get("addr:subdistrict") or "Surabaya"
-            street = tags.get("addr:street") or tags.get("addr:full") or "Surabaya"
+                        place_id = f"osm-{el.get('id', idx)}"
+                        wifi = "internet_access" in tags or tags.get("wifi") == "yes" or True
+                        opening = tags.get("opening_hours") or "08:00 - 23:00"
 
-            place_id = f"osm-{el.get('id', idx)}"
-            wifi = "internet_access" in tags or tags.get("wifi") == "yes" or True
-            opening = tags.get("opening_hours") or "08:00 - 23:00"
+                        places.append(
+                            PlaceItem(
+                                place_id=place_id,
+                                name=name,
+                                category=category,
+                                area=f"{street}, {city}",
+                                address=f"{street}, {city}",
+                                latitude=float(plat),
+                                longitude=float(plng),
+                                rating=round(4.2 + (idx % 8) * 0.1, 1),
+                                price_level="$" if category == "Warkop" else "$$",
+                                wifi_available=wifi,
+                                power_outlets=True,
+                                noise_level="Quiet" if idx % 2 == 0 else "Moderate",
+                                opening_hours=opening,
+                            )
+                        )
+                        if len(places) >= 12:
+                            break
 
-            places.append(
-                PlaceItem(
-                    place_id=place_id,
-                    name=name,
-                    category=category,
-                    area=f"{street}, {city}",
-                    address=f"{street}, {city}",
-                    latitude=float(plat),
-                    longitude=float(plng),
-                    rating=round(4.2 + (idx % 8) * 0.1, 1),
-                    price_level="$" if category == "Warkop" else "$$",
-                    wifi_available=wifi,
-                    power_outlets=True,
-                    noise_level="Quiet" if idx % 2 == 0 else "Moderate",
-                    opening_hours=opening,
-                )
-            )
-            if len(places) >= 12:
-                break
+                    if places:
+                        return places
+                elif res.status_code == 429:
+                    print(f"Notice: Mirror {mirror_url} rate-limited (429), trying next mirror...")
+                    continue
+        except Exception as err:
+            print(f"Notice: Mirror {mirror_url} failed ({err}), trying next mirror...")
+            continue
 
-        return places
+    return []
 
 async def _cache_places_to_db(places: List[PlaceItem]):
     """Insert real fetched OpenStreetMap places into PostgreSQL DB place_cache table."""

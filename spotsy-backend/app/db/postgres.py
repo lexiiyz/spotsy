@@ -8,9 +8,14 @@ db_url = settings.DATABASE_URL
 if db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# Automatically resolve Docker container hostname '@db:' to '@localhost:' when running outside Docker
-if "@db:" in db_url and not os.path.exists("/.dockerenv"):
-    db_url = db_url.replace("@db:", "@localhost:", 1)
+# Automatically resolve Docker container hostname '@db:5432' to '@localhost:5435' when running outside Docker
+if not os.path.exists("/.dockerenv"):
+    if "@db:5432" in db_url:
+        db_url = db_url.replace("@db:5432", "@localhost:5435", 1)
+    elif "@db:" in db_url:
+        db_url = db_url.replace("@db:", "@localhost:5435", 1)
+    elif "@localhost:5432" in db_url:
+        db_url = db_url.replace("@localhost:5432", "@localhost:5435", 1)
 
 engine = create_async_engine(
     db_url,
