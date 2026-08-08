@@ -8,19 +8,19 @@ from app.schemas.places import PlaceItem
 
 GENERIC_QUERY_WORDS = {"cafe", "kafe", "warkop", "coworking", "kuliner", "makanan", "sepi", "ramai", "dekat", "surabaya", "tempat", "nugas"}
 
-# Overpass API Public Mirror URLs for rate limit resilience
+# Overpass API Public Mirror URLs (kumi.systems fast mirror first)
 OVERPASS_MIRRORS = [
-    "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 ]
 
-# Simple in-memory cache to prevent spamming Overpass API
+# In-memory cache to prevent spamming Overpass API
 _IN_MEMORY_CACHE: Dict[str, tuple[float, List[PlaceItem]]] = {}
 CACHE_TTL_SECONDS = 300  # 5 minutes TTL
 
 async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912) -> List[PlaceItem]:
-    """Fetch REAL places around user location prioritizing PostgreSQL DB cache and Overpass API mirrors."""
+    """Fetch REAL places dynamically around user GPS coordinates using OpenStreetMap API with DB caching."""
     cache_key = f"{query.strip().lower()}_{round(lat, 2)}_{round(lng, 2)}"
     
     # Step 1: Check in-memory cache
@@ -29,7 +29,17 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
         if time.time() - cached_time < CACHE_TTL_SECONDS:
             return cached_items
 
-    # Step 2: Query PostgreSQL DB cache first
+    # Step 2: Fetch fresh real places from OpenStreetMap Overpass API around user's lat & lng
+    try:
+        real_places = await _fetch_overpass_places_with_mirror_fallback(query, lat, lng)
+        if real_places:
+            asyncio.create_task(_cache_places_to_db(real_places))
+            _IN_MEMORY_CACHE[cache_key] = (time.time(), real_places)
+            return real_places
+    except Exception as e:
+        print(f"Warning: Overpass API fetch failed ({e}), checking PostgreSQL DB cache...")
+
+    # Step 3: Fallback to PostgreSQL DB cache if Overpass API is temporarily unreachable
     try:
         async with AsyncSessionLocal() as session:
             sql = text("""
@@ -41,7 +51,7 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
             result = await session.execute(sql, {"q": f"%{query}%"})
             rows = result.fetchall()
 
-            if rows and len(rows) >= 3:
+            if rows:
                 places = [
                     PlaceItem(
                         place_id=row.place_id,
@@ -65,20 +75,10 @@ async def search_places(query: str, lat: float = -7.2754, lng: float = 112.7912)
     except Exception as db_err:
         print(f"Warning: PostgreSQL DB query failed ({db_err})")
 
-    # Step 3: Fetch fresh real places from Overpass API mirrors if DB is empty
-    try:
-        real_places = await _fetch_overpass_places_with_mirror_fallback(query, lat, lng)
-        if real_places:
-            asyncio.create_task(_cache_places_to_db(real_places))
-            _IN_MEMORY_CACHE[cache_key] = (time.time(), real_places)
-            return real_places
-    except Exception as e:
-        print(f"Warning: Overpass API fetch failed ({e})")
-
     return []
 
 async def _fetch_overpass_places_with_mirror_fallback(query: str, lat: float, lng: float) -> List[PlaceItem]:
-    """Query Overpass API for real places with automatic mirror failover."""
+    """Query Overpass API for real places dynamically around lat & lng with automatic mirror failover."""
     overpass_query = f"""
     [out:json][timeout:10];
     (
@@ -91,7 +91,8 @@ async def _fetch_overpass_places_with_mirror_fallback(query: str, lat: float, ln
     """
 
     headers = {
-        "User-Agent": "SpotsyApp/1.0 (https://spotsy.app; contact@spotsy.app)"
+        "User-Agent": "SpotsyApp/1.0 (https://spotsy.app)",
+        "Accept": "application/json"
     }
 
     q_clean = query.strip().lower()

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: place_cache (Store places & popular times JSON to reduce external API hits)
+-- Table: place_cache (Store real places & popular times JSON to reduce external API hits)
 CREATE TABLE IF NOT EXISTS place_cache (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     place_id VARCHAR(255) UNIQUE NOT NULL,
@@ -50,13 +50,3 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
-
--- Seed Data: Surabaya Places
-INSERT INTO place_cache (place_id, name, category, area, address, latitude, longitude, rating, price_level, wifi_available, power_outlets, noise_level, opening_hours, popular_times_json)
-VALUES
-  ('place-001', 'Tropikal Coffee Manyar', 'Kafe', 'Manyar, Surabaya Timur', 'Jl. Keputih Timur No. 12', -7.2819, 112.7953, 4.7, '$$', true, true, 'Sedang', '08:00 - 23:00', '[{"day":"Today","data":[10,15,25,35,40,65,70,80,60,30,15,0]}]'),
-  ('place-002', 'Koridor Co-Working Space', 'Coworking', 'Siwalankerto, Surabaya', 'Gedung Siola Lt. 3', -7.255, 112.738, 4.8, '$', true, true, 'Hening', '08:00 - 21:00', '[{"day":"Today","data":[5,10,20,30,45,50,40,30,20,10,0,0]}]'),
-  ('place-003', 'Warkop Pitulikur 24 Jam', 'Warkop', 'Gubeng, Surabaya', 'Jl. Bagong Jinawi No. 27', -7.271, 112.752, 4.5, '$', true, true, 'Ramai', '24 Jam', '[{"day":"Today","data":[30,20,10,10,20,40,60,80,90,85,70,50]}]'),
-  ('place-004', 'Common Ground Surabaya', 'Kafe', 'Darmokali, Surabaya', 'Jl. Raya Darmo No. 88', -7.29, 112.74, 4.6, '$$$', true, true, 'Sedang', '07:00 - 22:00', '[{"day":"Today","data":[10,20,30,50,70,60,50,40,30,20,10,0]}]'),
-  ('place-005', 'Cangkrukan ITS Sukolilo', 'Warkop', 'Sukolilo, Surabaya Timur', 'Jl. Teknik Kimia ITS', -7.28, 112.79, 4.4, '$', true, true, 'Sedang', '24 Jam', '[{"day":"Today","data":[15,10,5,5,15,35,55,75,85,70,50,30]}]')
-ON CONFLICT (place_id) DO NOTHING;
