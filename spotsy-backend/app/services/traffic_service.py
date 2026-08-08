@@ -1,8 +1,10 @@
 import math
+import httpx
+import asyncio
 from app.schemas.traffic import LocationCoords, RouteTrafficInfo
 
 def calculate_haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate the Great Circle distance between two points in kilometers."""
+    """Calculate Great Circle distance between two points in kilometers."""
     R = 6371.0  # Earth's radius in km
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -13,11 +15,42 @@ def calculate_haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2:
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return round(R * c, 1)
 
-def get_traffic_route(origin: LocationCoords, destination: LocationCoords) -> RouteTrafficInfo:
-    """Calculate distance, ETA in traffic, and traffic conditions."""
-    dist = calculate_haversine_distance_km(origin.lat, origin.lng, destination.lat, destination.lng)
+async def get_traffic_route_async(origin: LocationCoords, destination: LocationCoords) -> RouteTrafficInfo:
+    """Calculate real road network distance & travel time using OSRM Routing Engine."""
+    try:
+        osrm_url = f"http://router.project-osrm.org/route/v1/driving/{origin.lng},{origin.lat};{destination.lng},{destination.lat}?overview=false"
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get(osrm_url)
+            if res.status_code == 200:
+                data = res.json()
+                routes = data.get("routes", [])
+                if routes:
+                    dist_meters = routes[0].get("distance", 0)
+                    duration_sec = routes[0].get("duration", 0)
 
-    # Estimate travel time based on average speed (e.g. 25 km/h city speed)
+                    dist_km = round(dist_meters / 1000.0, 1)
+                    duration_mins = max(1, round(duration_sec / 60.0))
+
+                    if duration_mins <= 10:
+                        condition = "Lancar"
+                    elif duration_mins <= 25:
+                        condition = "Sedang"
+                    else:
+                        condition = "Padat Merayap"
+
+                    return RouteTrafficInfo(
+                        distance_km=dist_km,
+                        duration_in_traffic_mins=duration_mins,
+                        traffic_condition=condition
+                    )
+    except Exception as e:
+        print(f"Warning: OSRM Routing API failed ({e}), using Haversine calculation fallback.")
+
+    return get_traffic_route(origin, destination)
+
+def get_traffic_route(origin: LocationCoords, destination: LocationCoords) -> RouteTrafficInfo:
+    """Fallback Haversine travel time calculation."""
+    dist = calculate_haversine_distance_km(origin.lat, origin.lng, destination.lat, destination.lng)
     base_duration_mins = max(3, round((dist / 25.0) * 60))
 
     if dist < 2.0:

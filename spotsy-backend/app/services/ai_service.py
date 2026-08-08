@@ -8,24 +8,25 @@ from app.schemas.traffic import LocationCoords, RouteTrafficInfo
 from app.schemas.chat import ChatResponse, PlaceRecommendationResult
 from app.services.places_service import search_places
 from app.services.busyness_service import get_busyness
-from app.services.traffic_service import get_traffic_route
+from app.services.traffic_service import get_traffic_route_async
 
 async def process_chat_query(prompt: str, lat: float, lng: float, session_id: Optional[str] = None) -> ChatResponse:
     """Orchestrate search_places, get_busyness, and get_traffic_route tool execution."""
-    # Step 1: Search candidate places
+    # Step 1: Search real candidate places from OpenStreetMap
     places: List[PlaceItem] = await search_places(prompt, lat, lng)
 
-    # Step 2: Parallel execution of get_busyness & get_traffic_route
+    # Step 2: Parallel execution of get_busyness & OSRM real traffic routing
     user_coords = LocationCoords(lat=lat, lng=lng)
 
     async def _fetch_place_details(place: PlaceItem) -> PlaceRecommendationResult:
         dest_coords = LocationCoords(lat=place.latitude, lng=place.longitude)
         
-        # Parallel sub-tasks
+        # Parallel sub-tasks: Real OSRM road network routing + Busyness prediction
         busyness_task = asyncio.create_task(get_busyness(place.place_id))
-        traffic_info = get_traffic_route(user_coords, dest_coords)
+        traffic_task = asyncio.create_task(get_traffic_route_async(user_coords, dest_coords))
         
         busyness_res = await busyness_task
+        traffic_info = await traffic_task
         
         return PlaceRecommendationResult(
             place=place,
